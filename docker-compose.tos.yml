@@ -1,0 +1,23 @@
+# 铁威马 TOS 专用：不需要 build，直接用官方 node 镜像 + 挂载代码
+# 把整个 nas-recorder 文件夹放到 /Volume1/docker/nas-recorder
+services:
+  nas-recorder:
+    image: node:22-alpine
+    container_name: nas-recorder
+    restart: unless-stopped
+    working_dir: /app
+    command: sh -c "apk add --no-cache ffmpeg openssl tzdata >/dev/null && node server.js"
+    ports:
+      - "8443:8443"
+      - "8080:8080"
+    volumes:
+      - /Volume1/docker/nas-recorder:/app:ro      # 代码
+      - /Volume1/教程录屏:/recordings              # 录像保存位置，换成你的共享文件夹
+      - /Volume1/docker/nas-recorder/certs:/certs  # 自签证书
+    environment:
+      - DATA_DIR=/recordings
+      - CERT_DIR=/certs
+      - TZ=Asia/Shanghai
+      - PASSWORD=
+      - CERT_HOSTS=        # 填 NAS 局域网 IP，如 192.168.1.10
+      - PUBLIC_HTTPS_PORT=8443
