@@ -55,8 +55,9 @@ function setState(s, label) {
   ui.recState.textContent = label;
   document.body.classList.toggle('is-rec', s === 'recording' || s === 'paused');
   document.body.classList.toggle('is-busy', s !== 'idle');
-  window.desktop?.setRecState(s, ui.timer.textContent);
+  window.desktop?.setRecState(s, ui.timer.textContent, deskExtra());
 }
+const deskExtra = () => ({ hasMic: !!rec?.micGainNode, micMuted: ui.micBtn.classList.contains('toggled') });
 
 // ---------- 音量表 ----------
 function meterLoop(analyser, el) {
@@ -181,7 +182,7 @@ async function startRecording() {
     setState('countdown', '准备');
     for (let i = 3; i > 0; i--) {
       if (!rec || rec.ended) return;
-      ui.countdown.textContent = i; ui.countdown.classList.remove('tick'); void ui.countdown.offsetWidth; ui.countdown.classList.add('tick');
+      ui.countdown.textContent = i; window.desktop?.setRecState('countdown', String(i), deskExtra()); ui.countdown.classList.remove('tick'); void ui.countdown.offsetWidth; ui.countdown.classList.add('tick');
       await sleep(1000);
     }
     if (!rec || rec.ended) return;
@@ -224,7 +225,7 @@ let lastTitleSec = -1;
 function updateTimer() {
   ui.timer.textContent = fmtTime(elapsed());
   const sec = Math.floor(elapsed() / 1000);
-  if (window.desktop && sec !== lastTitleSec) { lastTitleSec = sec; window.desktop.setRecState(ui.stage.dataset.state, ui.timer.textContent); }
+  if (window.desktop && sec !== lastTitleSec) { lastTitleSec = sec; window.desktop.setRecState(ui.stage.dataset.state, ui.timer.textContent, deskExtra()); }
 }
 
 function togglePause() {
@@ -242,6 +243,7 @@ function toggleMic() {
   const muted = ui.micBtn.classList.toggle('toggled');
   rec.micGainNode.gain.setTargetAtTime(muted ? 0 : ui.micGain.value / 100, rec.ctx.currentTime, 0.02);
   toast(muted ? '麦克风已静音' : '麦克风已开启');
+  window.desktop?.setRecState(ui.stage.dataset.state, ui.timer.textContent, deskExtra());
 }
 
 function stopRecording() {
@@ -448,12 +450,27 @@ async function initDesktop() {
   showDir(cfg.saveDir);
   minOn.checked = cfg.minimizeOnRecord;
   minOn.onchange = () => d.setConfig({ minimizeOnRecord: minOn.checked });
+  const capMode = $('#capMode'), barOn = $('#barOn');
+  capMode.value = cfg.captureMode || 'ask';
+  barOn.checked = cfg.floatingBar !== false;
+  $('#title').closest('.field').after(capMode.closest('.field'));
+  const capHint = () => {
+    $('#capHint').textContent = { ask: '每次弹出选择框', window: '自动录你最后使用的窗口（例如浏览器）', screen: '自动录鼠标所在的屏幕' }[capMode.value];
+    $('.stage-hint').innerHTML = {
+      ask: '点击后选择要录制的 <b>屏幕</b> 或 <b>窗口</b>，也可以按 <b>Ctrl + Shift + R</b>',
+      window: '会自动录制你 <b>最后使用的窗口</b>。在浏览器里按 <b>Ctrl + Shift + R</b> 最方便',
+      screen: '会自动录制 <b>鼠标所在的屏幕</b>，也可以按 <b>Ctrl + Shift + R</b>',
+    }[capMode.value];
+  };
+  capHint();
+  capMode.onchange = () => { capHint(); d.setConfig({ captureMode: capMode.value }); };
+  barOn.onchange = () => d.setConfig({ floatingBar: barOn.checked });
+  d.onSourceChosen((name, type) => toast(type === 'screen' ? '录制整个屏幕' : '录制窗口：' + (name.length > 28 ? name.slice(0, 28) + '…' : name)));
   dirPath.onclick = () => d.openDir();
   $('#dirChange').onclick = async () => { const p = await d.chooseDir(); if (p) { showDir(p); toast('保存位置已更改'); loadLibrary(); } };
   $('#sysNote').textContent = d.platform === 'win32'
     ? '系统声音会录下电脑正在播放的所有声音。录网页教程时建议关掉音乐等其他声音。'
     : 'macOS 上桌面版暂不支持录制系统声音。';
-  $('.stage-hint').innerHTML = '点击后选择要录制的 <b>屏幕</b> 或 <b>窗口</b>，也可以按 <b>Ctrl + Shift + R</b>';
 
   // 录制源选择器
   const picker = $('#picker'), grid = $('#pickerGrid'), okBtn = $('#pickerOk');
@@ -487,5 +504,6 @@ async function initDesktop() {
   d.onHotkey(k => {
     if (k === 'toggle') { if (!rec) startRecording(); else stopRecording(); }
     if (k === 'pause') togglePause();
+    if (k === 'mic') toggleMic();
   });
 }

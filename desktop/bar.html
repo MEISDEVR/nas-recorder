@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'">
+<title>NAS Recorder Bar</title>
+<style>
+  :root {
+    --text: #ecebe7; --muted: #8d9097; --faint: #5d6067; --rec: #ff4b3a; --warn: #f2b35b;
+    --mono: ui-monospace, "SF Mono", "Cascadia Mono", Consolas, monospace;
+    --sans: -apple-system, "Segoe UI Variable", "Segoe UI", "Microsoft YaHei UI", sans-serif;
+  }
+  * { box-sizing: border-box; margin: 0; }
+  html, body { height: 100%; background: transparent; overflow: hidden; user-select: none; }
+  body { padding: 4px; font: 13px var(--sans); color: var(--text); }
+  .bar {
+    height: 100%; display: flex; align-items: center; gap: 4px; padding: 0 6px 0 14px;
+    border-radius: 14px; border: 1px solid rgba(255, 255, 255, .1);
+    background: linear-gradient(180deg, rgba(34, 36, 41, .96), rgba(20, 21, 24, .96));
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, .06);
+    -webkit-app-region: drag;
+  }
+  .status { display: flex; align-items: center; gap: 10px; flex: 1; min-width: 0; }
+  .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--rec); box-shadow: 0 0 10px rgba(255, 75, 58, .7); animation: blink 1.2s steps(2) infinite; flex: none; }
+  .time { font: 500 17px/1 var(--mono); font-variant-numeric: tabular-nums; letter-spacing: .02em; }
+  .label { font-size: 11px; color: var(--muted); white-space: nowrap; }
+  body[data-state="paused"] .dot { animation: none; background: var(--warn); box-shadow: none; }
+  body[data-state="paused"] .time { color: var(--muted); }
+  body[data-state="countdown"] .dot, body[data-state="saving"] .dot { animation: none; background: var(--faint); box-shadow: none; }
+  body[data-state="saving"] .dot { width: 12px; height: 12px; background: none; border: 2px solid rgba(255, 255, 255, .2); border-top-color: var(--text); animation: spin .8s linear infinite; }
+  @keyframes blink { 50% { opacity: .25; } }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .sep { width: 1px; height: 24px; background: rgba(255, 255, 255, .08); margin: 0 4px; }
+  button {
+    -webkit-app-region: no-drag; width: 36px; height: 36px; border: 0; border-radius: 10px;
+    background: transparent; color: var(--text); display: grid; place-items: center; cursor: pointer;
+    transition: background .12s;
+  }
+  button:hover { background: rgba(255, 255, 255, .08); }
+  button:active { background: rgba(255, 255, 255, .14); }
+  button:disabled { opacity: .3; cursor: default; background: transparent; }
+  svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+  .stop span { width: 14px; height: 14px; border-radius: 3px; background: var(--rec); }
+  .stop:hover { background: rgba(255, 75, 58, .14); }
+  .alt { display: none; }
+  .toggled .main { display: none; }
+  .toggled .alt { display: block; }
+  #mic.toggled { color: var(--rec); }
+  body[data-state="countdown"] button:not(.stop), body[data-state="saving"] button { opacity: .3; pointer-events: none; }
+</style>
+</head>
+<body data-state="idle">
+  <div class="bar">
+    <div class="status">
+      <i class="dot"></i>
+      <span class="time" id="time">00:00:00</span>
+      <span class="label" id="label"></span>
+    </div>
+    <div class="sep"></div>
+    <button id="mic" title="麦克风静音 / 取消静音">
+      <svg class="main" viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>
+      <svg class="alt" viewBox="0 0 24 24"><path d="M15 9.3V6a3 3 0 0 0-5.7-1.3M9 9v2a3 3 0 0 0 4.6 2.5M5 11a7 7 0 0 0 11.3 5.5M19 11a7 7 0 0 1-.6 2.8M12 18v3M3 3l18 18"/></svg>
+    </button>
+    <button id="pause" title="暂停 / 继续  Ctrl+Shift+P">
+      <svg class="main" viewBox="0 0 24 24"><path d="M9 5v14M15 5v14"/></svg>
+      <svg class="alt" viewBox="0 0 24 24"><path d="M7 5l12 7-12 7z"/></svg>
+    </button>
+    <button id="stop" class="stop" title="结束并保存  Ctrl+Shift+R"><span></span></button>
+  </div>
+<script>
+  const $ = id => document.getElementById(id);
+  $('mic').onclick = () => window.bar.action('mic');
+  $('pause').onclick = () => window.bar.action('pause');
+  $('stop').onclick = () => window.bar.action('toggle');
+  window.bar.onState(s => {
+    document.body.dataset.state = s.state;
+    $('time').textContent = s.state === 'countdown' ? s.text : (s.text || '00:00:00');
+    $('label').textContent = { countdown: '秒后开始', paused: '已暂停', saving: '保存中…' }[s.state] || '';
+    $('pause').classList.toggle('toggled', s.state === 'paused');
+    $('mic').classList.toggle('toggled', !!s.micMuted);
+    $('mic').disabled = !s.hasMic;
+  });
+</script>
+</body>
+</html>

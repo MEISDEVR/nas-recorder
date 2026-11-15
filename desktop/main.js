@@ -1,7 +1,7 @@
 // NAS Recorder 桌面版（Electron 主进程）
 // 内置 server.js 只监听 127.0.0.1，窗口加载 http://127.0.0.1:<port>（localhost 属于安全上下文，可直接录屏）
 'use strict';
-const { app, BrowserWindow, session, desktopCapturer, ipcMain, dialog, shell, globalShortcut, nativeImage, Menu } = require('electron');
+const { app, BrowserWindow, session, desktopCapturer, ipcMain, dialog, shell, globalShortcut, nativeImage, Menu, screen } = require('electron');
 const path = require('path');
 const fs = require('fs');
 
@@ -17,7 +17,7 @@ if (!app.requestSingleInstanceLock()) app.quit();
 
 const CONFIG_FILE = path.join(app.getPath('userData'), 'config.json');
 const config = Object.assign(
-  { saveDir: path.join(app.getPath('videos'), 'NAS Recorder'), minimizeOnRecord: true },
+  { saveDir: path.join(app.getPath('videos'), 'NAS Recorder'), minimizeOnRecord: true, captureMode: 'ask', floatingBar: true },
   (() => { try { return JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf8')); } catch { return {}; } })(),
 );
 const saveConfig = () => { try { fs.mkdirSync(path.dirname(CONFIG_FILE), { recursive: true }); fs.writeFileSync(CONFIG_FILE, JSON.stringify(config, null, 2)); } catch {} };
@@ -63,14 +63,28 @@ async function createWindow() {
       let sources = await desktopCapturer.getSources(opts);
       // 偶发返回空列表（显卡驱动刚初始化等），稍等重试一次
       if (!sources.some(s => s.id.startsWith('screen'))) { await new Promise(r => setTimeout(r, 600)); sources = await desktopCapturer.getSources(opts); }
-      const list = sources
-        .filter(s => !s.name.startsWith('NAS Recorder'))
-        .map(s => ({ id: s.id, name: s.name, type: s.id.startsWith('screen') ? 'screen' : 'window', thumb: s.thumbnail.toDataURL(), appIcon: s.appIcon && !s.appIcon.isEmpty() ? s.appIcon.toDataURL() : null }));
-      if (win.isMinimized()) win.restore();
-      win.focus();
-      const id = await askRenderer('pick-source', list);
-      const chosen = sources.find(s => s.id === id);
-      if (!chosen) return callback({});
+      const isOwn = s => s.name.startsWith('NAS Recorder');
+      let chosen = null;
+      if (config.captureMode === 'window') {
+        // Windows 按 Z 序返回窗口：排除本软件后的第一个，就是你刚才在用的窗口
+        chosen = sources.find(s => s.id.startsWith('window') && s.name.trim() && !isOwn(s));
+      } else if (config.captureMode === 'screen') {
+        const cur = screen.getDisplayNearestPoint(screen.getCursorScreenPoint());
+        chosen = sources.find(s => s.id.startsWith('screen') && s.display_id === String(cur.id)) || sources.find(s => s.id.startsWith('screen'));
+      }
+      if (chosen) {
+        send('source-chosen', chosen.name, chosen.id.startsWith('screen') ? 'screen' : 'window');
+      } else {
+        const list = sources
+          .filter(s => !isOwn(s))
+          .map(s => ({ id: s.id, name: s.name, type: s.id.startsWith('screen') ? 'screen' : 'window', thumb: s.thumbnail.toDataURL(), appIcon: s.appIcon && !s.appIcon.isEmpty() ? s.appIcon.toDataURL() : null }));
+        if (win.isMinimized()) win.restore();
+        win.focus();
+        const id = await askRenderer('pick-source', list);
+        chosen = sources.find(s => s.id === id);
+        if (!chosen) return callback({});
+      }
+      captureDisplay = displayFor(chosen);
       // Windows 支持 loopback：录下整个系统的声音
       callback(request.audioRequested && process.platform === 'win32' ? { video: chosen, audio: 'loopback' } : { video: chosen });
       if (config.minimizeOnRecord) setTimeout(() => win && !win.isDestroyed() && win.minimize(), 150);
@@ -113,6 +127,8 @@ const send = (ch, ...a) => win && !win.isDestroyed() && win.webContents.send(ch,
 ipcMain.handle('config:get', () => ({ ...config, ffmpeg: server.hasFfmpeg, version: app.getVersion() }));
 ipcMain.handle('config:set', (_e, patch) => {
   if ('minimizeOnRecord' in patch) config.minimizeOnRecord = !!patch.minimizeOnRecord;
+  if ('floatingBar' in patch) config.floatingBar = !!patch.floatingBar;
+  if (['ask', 'window', 'screen'].includes(patch.captureMode)) config.captureMode = patch.captureMode;
   saveConfig();
   return config;
 });
@@ -129,12 +145,61 @@ ipcMain.handle('file:show', (_e, file) => {
   if (typeof file !== 'string' || /[\\/]/.test(file)) return;
   shell.showItemInFolder(path.join(config.saveDir, file));
 });
-ipcMain.on('rec:state', (_e, state, elapsedText) => {
+ipcMain.on('rec:state', (_e, state, elapsedText, extra) => {
   const changed = state !== recState;
   recState = state;
   if (changed && state === 'idle' && win && win.isMinimized()) { win.restore(); win.focus(); }
   updateThumbar(elapsedText);
+  updateBar(state, elapsedText, extra || {});
 });
+// 悬浮条上的按钮 → 交给主界面执行
+ipcMain.on('bar:action', (_e, action) => {
+  if (action === 'open') { if (win) { win.restore(); win.focus(); } return; }
+  if (['toggle', 'pause', 'mic'].includes(action)) send('hotkey', action);
+});
+
+// ---------- 右下角悬浮控制条 ----------
+let bar = null, captureDisplay = null;
+const BAR_W = 304, BAR_H = 60, MARGIN = 20;
+function displayFor(src) {
+  if (src && src.display_id) { const d = screen.getAllDisplays().find(x => String(x.id) === src.display_id); if (d) return d; }
+  return screen.getDisplayNearestPoint(screen.getCursorScreenPoint());
+}
+function ensureBar() {
+  if (bar && !bar.isDestroyed()) return bar;
+  bar = new BrowserWindow({
+    width: BAR_W, height: BAR_H, frame: false, transparent: true, resizable: false, movable: true,
+    alwaysOnTop: true, skipTaskbar: true, focusable: false, show: false, hasShadow: false,
+    title: 'NAS Recorder Bar', backgroundColor: '#00000000',
+    webPreferences: { preload: path.join(__dirname, 'bar-preload.js'), contextIsolation: true, sandbox: true },
+  });
+  bar.setAlwaysOnTop(true, 'screen-saver');
+  bar.setVisibleOnAllWorkspaces(true);
+  // 不被录进视频（Windows 10 2004+ 会从画面里完全剔除）
+  bar.setContentProtection(true);
+  bar.loadFile(path.join(__dirname, 'bar.html'));
+  bar.on('closed', () => { bar = null; });
+  return bar;
+}
+function placeBar() {
+  const wa = (captureDisplay || screen.getPrimaryDisplay()).workArea;
+  bar.setBounds({ x: Math.round(wa.x + wa.width - BAR_W - MARGIN), y: Math.round(wa.y + wa.height - BAR_H - MARGIN), width: BAR_W, height: BAR_H });
+}
+function updateBar(state, text, extra) {
+  const active = ['countdown', 'recording', 'paused', 'saving'].includes(state);
+  if (!config.floatingBar || !active) {
+    if (bar && !bar.isDestroyed() && bar.isVisible()) { bar.hide(); bar.webContents.send('bar:state', { state: 'idle' }); }
+    if (state === 'idle') captureDisplay = null;
+    return;
+  }
+  const b = ensureBar();
+  const push = () => b.webContents.send('bar:state', { state, text, ...extra });
+  if (!b.isVisible()) {
+    placeBar();
+    if (b.webContents.isLoading()) b.webContents.once('did-finish-load', () => { push(); b.showInactive(); });
+    else { push(); b.showInactive(); }
+  } else push();
+}
 
 // ---------- 生命周期 ----------
 app.on('second-instance', () => { if (win) { if (win.isMinimized()) win.restore(); win.focus(); } });

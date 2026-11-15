@@ -128,6 +128,19 @@
             <button class="btn ghost sm" id="dirChange">更改</button>
           </div>
         </div>
+        <label class="field">
+          <span>录制对象</span>
+          <select id="capMode">
+            <option value="ask">每次手动选择</option>
+            <option value="window">自动：当前窗口</option>
+            <option value="screen">自动：整个屏幕</option>
+          </select>
+          <small class="field-hint" id="capHint"></small>
+        </label>
+        <div class="toggle-row live">
+          <div><b>右下角悬浮控制条</b><small>录制时显示计时和按钮，不会被录进去</small></div>
+          <label class="switch"><input type="checkbox" id="barOn" checked><i></i></label>
+        </div>
         <div class="toggle-row live">
           <div><b>录制时最小化窗口</b><small>避免把本软件录进去</small></div>
           <label class="switch"><input type="checkbox" id="minOn" checked><i></i></label>
