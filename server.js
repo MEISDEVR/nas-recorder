@@ -97,6 +97,12 @@ async function handle(req, res) {
   const url = new URL(req.url, 'http://x');
   const p = decodeURIComponent(url.pathname);
 
+  // 桌面版：只接受本软件自己的请求（挡住 DNS rebinding 和其它网页的跨站请求）
+  if (localOrigin) {
+    const origin = req.headers.origin;
+    if (req.headers.host !== localOrigin.host || (origin && origin !== localOrigin.origin)) return send(res, 403, 'Forbidden');
+  }
+
   if (PASSWORD) {
     const [, b64 = ''] = (req.headers.authorization || '').split(' ');
     const pass = Buffer.from(b64, 'base64').toString().split(':').slice(1).join(':');
@@ -245,12 +251,17 @@ const getDataDir = () => DATA_DIR;
 const isBusy = () => sessions.size > 0;
 
 // 只监听本机（桌面版用），port=0 表示随机空闲端口
+let localOrigin = null;
 function startLocal(port = 0) {
   fs.mkdirSync(DATA_DIR, { recursive: true });
   return new Promise((ok, fail) => {
     const srv = http.createServer(handle);
     srv.once('error', fail);
-    srv.listen(port, '127.0.0.1', () => ok(srv.address().port));
+    srv.listen(port, '127.0.0.1', () => {
+      const real = srv.address().port;
+      localOrigin = { host: `127.0.0.1:${real}`, origin: `http://127.0.0.1:${real}` };
+      ok(real);
+    });
   });
 }
 

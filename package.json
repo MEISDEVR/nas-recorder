@@ -1,7 +1,7 @@
 {
   "name": "nas-recorder",
   "productName": "NAS Recorder",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "录屏幕、系统声音和麦克风解说，直接保存到本机或 NAS。桌面版 + NAS/Docker 网页版。",
   "main": "desktop/main.js",
   "license": "MIT",

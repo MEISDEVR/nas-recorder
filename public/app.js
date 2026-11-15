@@ -493,6 +493,9 @@ async function initDesktop() {
   $('#pickerCancel').onclick = $('#pickerClose').onclick = () => done(null);
   picker.addEventListener('cancel', e => { e.preventDefault(); done(null); });
   d.onPickSource(list => new Promise(resolve => {
+    // 屏幕统一显示为中文名
+    const scr = list.filter(s => s.type === 'screen');
+    scr.forEach((s, i) => { s.name = scr.length === 1 ? '整个屏幕' : `屏幕 ${i + 1}`; });
     sources = list; type = 'screen';
     const screens = list.filter(s => s.type === 'screen');
     chosen = screens.length === 1 ? screens[0].id : null;

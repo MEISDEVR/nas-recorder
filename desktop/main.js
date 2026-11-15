@@ -40,14 +40,22 @@ async function createWindow() {
     backgroundColor: '#0c0d0f', title: 'NAS Recorder', show: false,
     icon: path.join(__dirname, 'icons', 'app.png'),
     autoHideMenuBar: true,
-    webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, sandbox: true },
+    webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, sandbox: true, spellcheck: false },
   });
   Menu.setApplicationMenu(null);
   win.once('ready-to-show', () => win.show());
   win.loadURL(`http://127.0.0.1:${port}/`);
 
-  // 外部链接用系统浏览器打开
-  win.webContents.setWindowOpenHandler(({ url }) => { shell.openExternal(url); return { action: 'deny' }; });
+  // 权限白名单：只允许本软件自己的页面使用 麦克风/屏幕录制/复制链接，其它一律拒绝
+  const appOrigin = `http://127.0.0.1:${port}`;
+  const ALLOWED = new Set(['media', 'display-capture', 'clipboard-sanitized-write']);
+  const okOrigin = u => { try { return new URL(u).origin === appOrigin; } catch { return false; } };
+  session.defaultSession.setPermissionRequestHandler((wc, perm, cb, details) => cb(ALLOWED.has(perm) && okOrigin(details.requestingUrl || wc.getURL())));
+  session.defaultSession.setPermissionCheckHandler((wc, perm, origin) => ALLOWED.has(perm) && okOrigin(origin));
+
+  // 不允许跳转到外部页面；外部链接交给系统浏览器
+  win.webContents.on('will-navigate', (e, url) => { if (!okOrigin(url)) { e.preventDefault(); if (/^https:\/\//.test(url)) shell.openExternal(url); } });
+  win.webContents.setWindowOpenHandler(({ url }) => { if (/^https:\/\//.test(url)) shell.openExternal(url); return { action: 'deny' }; });
 
   // 录制中关闭窗口要确认
   win.on('close', e => {
