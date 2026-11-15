@@ -58,13 +58,7 @@ build/             应用图标
 .github/workflows/ 推送 v* 标签时自动在 Windows 上打包并发布 Release
 ```
 
-发新版本：改 `package.json` 里的 `version`，然后
-
-```bash
-git tag v1.0.1 && git push origin v1.0.1
-```
-
-GitHub Actions 会自动构建安装包，并发布到 Releases。
+发新版本：把 `package.json` 里的 `version` 改大（如 `1.0.1`）后推到 `main`。GitHub Actions 会在 Windows 上打包，并自动发布或更新对应版本的 Release。
 
 ## 许可证
 
