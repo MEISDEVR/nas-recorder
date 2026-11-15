@@ -16,7 +16,7 @@
 
 到 [Releases](https://github.com/MEISDEVR/nas-recorder/releases) 下载最新版：
 
-- `NAS-Recorder-x.y.z-x64-nsis.exe`：安装版
+- `NAS-Recorder-x.y.z-setup.exe`：安装版
 - `NAS-Recorder-x.y.z-portable.exe`：绿色版，不用安装，双击就能运行
 
 > 安装包没有做代码签名，第一次运行时 Windows 可能提示「已保护你的电脑」，点「更多信息 → 仍要运行」即可。

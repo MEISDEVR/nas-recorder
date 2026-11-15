@@ -22,18 +22,36 @@
   "build": {
     "appId": "dev.minchuan.nasrecorder",
     "productName": "NAS Recorder",
-    "artifactName": "NAS-Recorder-${version}-${arch}-${target}.${ext}",
-    "directories": { "output": "dist", "buildResources": "build" },
-    "files": ["server.js", "public/**", "desktop/**", "package.json"],
-    "asarUnpack": ["node_modules/ffmpeg-static/**"],
-    "win": { "icon": "build/icon.ico", "target": ["nsis", "portable"] },
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "files": [
+      "server.js",
+      "public/**",
+      "desktop/**",
+      "package.json"
+    ],
+    "asarUnpack": [
+      "node_modules/ffmpeg-static/**"
+    ],
+    "win": {
+      "icon": "build/icon.ico",
+      "target": [
+        "nsis",
+        "portable"
+      ]
+    },
     "nsis": {
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
       "perMachine": false,
       "shortcutName": "NAS Recorder",
-      "language": "2052"
+      "language": "2052",
+      "artifactName": "NAS-Recorder-${version}-setup.${ext}"
     },
-    "portable": { "artifactName": "NAS-Recorder-${version}-portable.exe" }
+    "portable": {
+      "artifactName": "NAS-Recorder-${version}-portable.exe"
+    }
   }
 }
